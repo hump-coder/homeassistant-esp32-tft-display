@@ -55,6 +55,7 @@ PubSubClient mqtt(wifiClient);
 
 static const int CENTER = 120;
 static const int RADIUS = 120;
+static const unsigned long UPDATE_INTERVAL = 20; // ms per frame
 static bool animationEnabled = true;
 static unsigned long animationDuration = 1000; // ms
 
@@ -81,6 +82,12 @@ struct Dial {
 
 static Arc arcs[3];
 static Dial dial;
+
+static float ease(float t) {
+  if (t < 0.0f) return 0.0f;
+  if (t > 1.0f) return 1.0f;
+  return t * t * (3.0f - 2.0f * t); // smoothstep easing
+}
 
 static void setArcValue(int idx, float v) {
   arcs[idx].start = arcs[idx].display;
@@ -150,14 +157,14 @@ static void animateValues() {
     if (progress >= 1.0f) {
       arcs[i].display = arcs[i].value;
     } else {
-      arcs[i].display = arcs[i].start + (arcs[i].value - arcs[i].start) * progress;
+      arcs[i].display = arcs[i].start + (arcs[i].value - arcs[i].start) * ease(progress);
     }
   }
   float progress = (float)(now - dial.startTime) / animationDuration;
   if (progress >= 1.0f) {
     dial.display = dial.value;
   } else {
-    dial.display = dial.start + (dial.value - dial.start) * progress;
+    dial.display = dial.start + (dial.value - dial.start) * ease(progress);
   }
 }
 
@@ -360,7 +367,7 @@ void loop() {
   }
   mqtt.loop();
   static unsigned long last = 0;
-  if (millis() - last > 50) {
+  if (millis() - last > UPDATE_INTERVAL) {
     updateDisplay();
     last = millis();
   }
