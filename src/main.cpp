@@ -2,6 +2,7 @@
 #include <Wire.h>
 #include <WiFi.h>
 #include <PubSubClient.h>
+#include <ArduinoJson.h>
 #include <Adafruit_AHTX0.h>
 #include <LovyanGFX.hpp>
 #include "config.h"
@@ -56,20 +57,59 @@ static const int CENTER = 120;
 static const int RADIUS = 120;
 
 struct Arc {
-  float value = 0.0f; // 0-100
+  float value = 0.0f;
+  float min = 0.0f;
+  float max = 100.0f;
   int width = 8;
   uint16_t color = TFT_WHITE;
 };
 
+struct Dial {
+  float value = 0.0f;
+  float min = 0.0f;
+  float max = 100.0f;
+  uint16_t color = TFT_RED;
+};
+
 static Arc arcs[3];
-static float dialValue = 0.0f; // 0-100
+static Dial dial;
+
+static uint16_t parseColor(const String& str) {
+  String s = str;
+  if (s.startsWith("#")) s.remove(0, 1);
+  if (s.startsWith("0x") || s.startsWith("0X")) s.remove(0, 2);
+  uint32_t rgb = strtoul(s.c_str(), nullptr, 16);
+  uint8_t r = (rgb >> 16) & 0xFF;
+  uint8_t g = (rgb >> 8) & 0xFF;
+  uint8_t b = rgb & 0xFF;
+  return ((r & 0xF8) << 8) | ((g & 0xFC) << 3) | (b >> 3);
+}
+
+static void handleArc(int idx, JsonVariantConst obj) {
+  if (obj["value"].is<float>()) arcs[idx].value = obj["value"].as<float>();
+  if (obj["min"].is<float>()) arcs[idx].min = obj["min"].as<float>();
+  if (obj["max"].is<float>()) arcs[idx].max = obj["max"].as<float>();
+  if (obj["width"].is<int>()) arcs[idx].width = obj["width"].as<int>();
+  if (obj.containsKey("color")) arcs[idx].color = parseColor(obj["color"].as<String>());
+}
+
+static void handleDial(JsonVariantConst obj) {
+  if (obj["value"].is<float>()) dial.value = obj["value"].as<float>();
+  if (obj["min"].is<float>()) dial.min = obj["min"].as<float>();
+  if (obj["max"].is<float>()) dial.max = obj["max"].as<float>();
+  if (obj.containsKey("color")) dial.color = parseColor(obj["color"].as<String>());
+}
 
 static void drawArcs() {
   int r = RADIUS;
   for (int i = 0; i < 3; ++i) {
     if (arcs[i].width <= 0) continue;
     int inner = r - arcs[i].width;
-    float angle = arcs[i].value * 3.6f - 90.0f;
+    float range = arcs[i].max - arcs[i].min;
+    if (range <= 0) range = 1.0f;
+    float pct = (arcs[i].value - arcs[i].min) / range;
+    if (pct < 0) pct = 0; else if (pct > 1) pct = 1;
+    float angle = pct * 360.0f - 90.0f;
     canvas.fillArc(CENTER, CENTER, r, inner, -90, angle, arcs[i].color);
     r = inner - 2; // small gap
   }
@@ -103,11 +143,15 @@ static void drawDial() {
     canvas.drawString(buf, xt, yt);
   }
 
-  float angle = dialValue * 2.7f - 135.0f;
+  float range = dial.max - dial.min;
+  if (range <= 0) range = 1.0f;
+  float pct = (dial.value - dial.min) / range;
+  if (pct < 0) pct = 0; else if (pct > 1) pct = 1;
+  float angle = pct * 270.0f - 135.0f;
   float rad = angle * DEG_TO_RAD;
   int x = CENTER + (int)(sinf(rad) * (r - 10));
   int y = CENTER - (int)(cosf(rad) * (r - 10));
-  canvas.drawLine(CENTER, CENTER, x, y, TFT_RED);
+  canvas.drawLine(CENTER, CENTER, x, y, dial.color);
 }
 
 static void updateDisplay() {
@@ -117,7 +161,7 @@ static void updateDisplay() {
   Serial.print(temp.temperature);
   Serial.println(" C");
   Serial.print("Dial value: ");
-  Serial.println(dialValue);
+  Serial.println(dial.value);
   Serial.print("Arc values: ");
   Serial.print(arcs[0].value);
   Serial.print(", ");
@@ -144,23 +188,29 @@ static void mqttCallback(char* topic, byte* payload, unsigned int length) {
   Serial.print(topic);
   Serial.print(": ");
   Serial.println(val);
-  float f = val.toFloat();
-  if (strcmp(topic, "ha_display/arc1") == 0) {
-    arcs[0].value = f;
-    Serial.print("Arc1 set to ");
-    Serial.println(f);
-  } else if (strcmp(topic, "ha_display/arc2") == 0) {
-    arcs[1].value = f;
-    Serial.print("Arc2 set to ");
-    Serial.println(f);
-  } else if (strcmp(topic, "ha_display/arc3") == 0) {
-    arcs[2].value = f;
-    Serial.print("Arc3 set to ");
-    Serial.println(f);
-  } else if (strcmp(topic, "ha_display/dial") == 0) {
-    dialValue = f;
-    Serial.print("Dial set to ");
-    Serial.println(f);
+  StaticJsonDocument<256> doc;
+  DeserializationError err = deserializeJson(doc, payload, length);
+  if (!err) {
+    if (strcmp(topic, "ha_display/arc1") == 0) {
+      handleArc(0, doc);
+    } else if (strcmp(topic, "ha_display/arc2") == 0) {
+      handleArc(1, doc);
+    } else if (strcmp(topic, "ha_display/arc3") == 0) {
+      handleArc(2, doc);
+    } else if (strcmp(topic, "ha_display/dial") == 0) {
+      handleDial(doc);
+    }
+  } else {
+    float f = val.toFloat();
+    if (strcmp(topic, "ha_display/arc1") == 0) {
+      arcs[0].value = f;
+    } else if (strcmp(topic, "ha_display/arc2") == 0) {
+      arcs[1].value = f;
+    } else if (strcmp(topic, "ha_display/arc3") == 0) {
+      arcs[2].value = f;
+    } else if (strcmp(topic, "ha_display/dial") == 0) {
+      dial.value = f;
+    }
   }
 }
 
