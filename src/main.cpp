@@ -78,6 +78,31 @@ static void drawArcs() {
 static void drawDial() {
   int r = RADIUS - 40;
   canvas.drawCircle(CENTER, CENTER, r, TFT_WHITE);
+
+  // draw tick marks every 10 units
+  for (int i = 0; i <= 100; i += 10) {
+    float a = i * 2.7f - 135.0f;
+    float rad = a * DEG_TO_RAD;
+    int x1 = CENTER + (int)(sinf(rad) * (r - 5));
+    int y1 = CENTER - (int)(cosf(rad) * (r - 5));
+    int x2 = CENTER + (int)(sinf(rad) * r);
+    int y2 = CENTER - (int)(cosf(rad) * r);
+    canvas.drawLine(x1, y1, x2, y2, TFT_WHITE);
+  }
+
+  // label the major ticks
+  canvas.setTextColor(TFT_WHITE, TFT_BLACK);
+  canvas.setTextDatum(MC_DATUM);
+  for (int i = 0; i <= 100; i += 50) {
+    float a = i * 2.7f - 135.0f;
+    float rad = a * DEG_TO_RAD;
+    int xt = CENTER + (int)(sinf(rad) * (r - 15));
+    int yt = CENTER - (int)(cosf(rad) * (r - 15));
+    char buf[4];
+    snprintf(buf, sizeof(buf), "%d", i);
+    canvas.drawString(buf, xt, yt);
+  }
+
   float angle = dialValue * 2.7f - 135.0f;
   float rad = angle * DEG_TO_RAD;
   int x = CENTER + (int)(sinf(rad) * (r - 10));
