@@ -88,6 +88,17 @@ static void drawDial() {
 static void updateDisplay() {
   sensors_event_t humidity, temp;
   aht.getEvent(&humidity, &temp);
+  Serial.print("Temperature: ");
+  Serial.print(temp.temperature);
+  Serial.println(" C");
+  Serial.print("Dial value: ");
+  Serial.println(dialValue);
+  Serial.print("Arc values: ");
+  Serial.print(arcs[0].value);
+  Serial.print(", ");
+  Serial.print(arcs[1].value);
+  Serial.print(", ");
+  Serial.println(arcs[2].value);
   canvas.fillScreen(TFT_BLACK);
   drawArcs();
   drawDial();
@@ -98,34 +109,59 @@ static void updateDisplay() {
   canvas.drawString(buf, CENTER, 200);
   canvas.pushSprite(0, 0);
   mqtt.publish("ha_display/temperature", buf, true);
+  Serial.println("Temperature published");
 }
 
 static void mqttCallback(char* topic, byte* payload, unsigned int length) {
   String val;
   for (unsigned int i = 0; i < length; ++i) val += (char)payload[i];
+  Serial.print("MQTT message ");
+  Serial.print(topic);
+  Serial.print(": ");
+  Serial.println(val);
   float f = val.toFloat();
-  if (strcmp(topic, "ha_display/arc1") == 0) arcs[0].value = f;
-  else if (strcmp(topic, "ha_display/arc2") == 0) arcs[1].value = f;
-  else if (strcmp(topic, "ha_display/arc3") == 0) arcs[2].value = f;
-  else if (strcmp(topic, "ha_display/dial") == 0) dialValue = f;
+  if (strcmp(topic, "ha_display/arc1") == 0) {
+    arcs[0].value = f;
+    Serial.print("Arc1 set to ");
+    Serial.println(f);
+  } else if (strcmp(topic, "ha_display/arc2") == 0) {
+    arcs[1].value = f;
+    Serial.print("Arc2 set to ");
+    Serial.println(f);
+  } else if (strcmp(topic, "ha_display/arc3") == 0) {
+    arcs[2].value = f;
+    Serial.print("Arc3 set to ");
+    Serial.println(f);
+  } else if (strcmp(topic, "ha_display/dial") == 0) {
+    dialValue = f;
+    Serial.print("Dial set to ");
+    Serial.println(f);
+  }
 }
 
 static void mqttConnect() {
   while (!mqtt.connected()) {
     String clientId = "esp32-display-" + String(random(0xffff), HEX);
+    Serial.print("Connecting to MQTT...");
     if (mqtt.connect(clientId.c_str())) {
+      Serial.println("connected");
       mqtt.subscribe("ha_display/arc1");
       mqtt.subscribe("ha_display/arc2");
       mqtt.subscribe("ha_display/arc3");
       mqtt.subscribe("ha_display/dial");
+      Serial.println("MQTT subscriptions set");
     } else {
+      Serial.print("failed, rc=");
+      Serial.println(mqtt.state());
       delay(1000);
     }
   }
+  Serial.println("MQTT connection ready");
 }
 
 void setup() {
   Serial.begin(115200);
+  Serial.println("Setup starting");
   tft.begin();
   tft.setRotation(0);
   tft.setBrightness(200);
@@ -138,21 +174,32 @@ void setup() {
   aht.begin(&Wire);
 
   WiFi.begin(CONFIG_WIFI_SSID, CONFIG_WIFI_PASS);
+  Serial.print("Connecting to WiFi: ");
+  Serial.println(CONFIG_WIFI_SSID);
   while (WiFi.status() != WL_CONNECTED) {
     delay(500);
   }
+  Serial.print("WiFi connected. IP address: ");
+  Serial.println(WiFi.localIP());
 
+  Serial.print("MQTT server: ");
+  Serial.print(CONFIG_MQTT_HOST);
+  Serial.print(":");
+  Serial.println(CONFIG_MQTT_PORT);
   mqtt.setServer(CONFIG_MQTT_HOST, CONFIG_MQTT_PORT);
   mqtt.setCallback(mqttCallback);
+  Serial.println("Setup complete");
 }
 
 void loop() {
   if (!mqtt.connected()) {
+    Serial.println("MQTT disconnected, reconnecting");
     mqttConnect();
   }
   mqtt.loop();
   static unsigned long last = 0;
   if (millis() - last > 1000) {
+    Serial.println("Updating display");
     updateDisplay();
     last = millis();
   }
