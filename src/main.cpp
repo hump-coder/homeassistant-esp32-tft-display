@@ -58,6 +58,7 @@ static const int RADIUS = 120;
 
 struct Arc {
   float value = 0.0f;
+  float display = 0.0f;
   float min = 0.0f;
   float max = 100.0f;
   int width = 8;
@@ -66,6 +67,7 @@ struct Arc {
 
 struct Dial {
   float value = 0.0f;
+  float display = 0.0f;
   float min = 0.0f;
   float max = 100.0f;
   uint16_t color = TFT_RED;
@@ -100,6 +102,17 @@ static void handleDial(JsonVariantConst obj) {
   if (obj.containsKey("color")) dial.color = parseColor(obj["color"].as<String>());
 }
 
+static void animateValues() {
+  for (int i = 0; i < 3; ++i) {
+    float diff = arcs[i].value - arcs[i].display;
+    arcs[i].display += diff * 0.1f;
+    if (fabsf(diff) < 0.01f) arcs[i].display = arcs[i].value;
+  }
+  float d = dial.value - dial.display;
+  dial.display += d * 0.1f;
+  if (fabsf(d) < 0.01f) dial.display = dial.value;
+}
+
 static void drawArcs() {
   int r = RADIUS;
   for (int i = 0; i < 3; ++i) {
@@ -107,7 +120,7 @@ static void drawArcs() {
     int inner = r - arcs[i].width;
     float range = arcs[i].max - arcs[i].min;
     if (range <= 0) range = 1.0f;
-    float pct = (arcs[i].value - arcs[i].min) / range;
+    float pct = (arcs[i].display - arcs[i].min) / range;
     if (pct < 0) pct = 0; else if (pct > 1) pct = 1;
     float angle = pct * 360.0f - 90.0f;
     canvas.fillArc(CENTER, CENTER, r, inner, -90, angle, arcs[i].color);
@@ -145,7 +158,7 @@ static void drawDial() {
 
   float range = dial.max - dial.min;
   if (range <= 0) range = 1.0f;
-  float pct = (dial.value - dial.min) / range;
+  float pct = (dial.display - dial.min) / range;
   if (pct < 0) pct = 0; else if (pct > 1) pct = 1;
   float angle = pct * 270.0f - 135.0f;
   float rad = angle * DEG_TO_RAD;
@@ -155,30 +168,47 @@ static void drawDial() {
 }
 
 static void updateDisplay() {
+  static unsigned long lastSensor = 0;
+  static float breathe = 0.0f;
+  static float tempC = 0.0f;
   sensors_event_t humidity, temp;
-  aht.getEvent(&humidity, &temp);
-  Serial.print("Temperature: ");
-  Serial.print(temp.temperature);
-  Serial.println(" C");
-  Serial.print("Dial value: ");
-  Serial.println(dial.value);
-  Serial.print("Arc values: ");
-  Serial.print(arcs[0].value);
-  Serial.print(", ");
-  Serial.print(arcs[1].value);
-  Serial.print(", ");
-  Serial.println(arcs[2].value);
+  if (millis() - lastSensor > 1000) {
+    aht.getEvent(&humidity, &temp);
+    tempC = temp.temperature;
+    char buf[16];
+    snprintf(buf, sizeof(buf), "%.1fC", tempC);
+    mqtt.publish("ha_display/temperature", buf, true);
+    Serial.println("Temperature published");
+    lastSensor = millis();
+  }
+  breathe += 0.05f;
+  int brightness = 190 + (int)(sinf(breathe) * 30);
+  tft.setBrightness(brightness);
+  animateValues();
+  static unsigned long debugLast = 0;
+  if (millis() - debugLast > 1000) {
+    Serial.print("Temperature: ");
+    Serial.print(tempC);
+    Serial.println(" C");
+    Serial.print("Dial value: ");
+    Serial.println(dial.display);
+    Serial.print("Arc values: ");
+    Serial.print(arcs[0].display);
+    Serial.print(", ");
+    Serial.print(arcs[1].display);
+    Serial.print(", ");
+    Serial.println(arcs[2].display);
+    debugLast = millis();
+  }
   canvas.fillScreen(TFT_BLACK);
   drawArcs();
   drawDial();
   char buf[16];
-  snprintf(buf, sizeof(buf), "%.1fC", temp.temperature);
+  snprintf(buf, sizeof(buf), "%.1fC", tempC);
   canvas.setTextColor(TFT_WHITE, TFT_BLACK);
   canvas.setTextDatum(MC_DATUM);
   canvas.drawString(buf, CENTER, 200);
   canvas.pushSprite(0, 0);
-  mqtt.publish("ha_display/temperature", buf, true);
-  Serial.println("Temperature published");
 }
 
 static void mqttCallback(char* topic, byte* payload, unsigned int length) {
@@ -282,8 +312,7 @@ void loop() {
   }
   mqtt.loop();
   static unsigned long last = 0;
-  if (millis() - last > 1000) {
-    Serial.println("Updating display");
+  if (millis() - last > 50) {
     updateDisplay();
     last = millis();
   }
