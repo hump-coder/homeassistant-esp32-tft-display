@@ -31,6 +31,8 @@ Supported fields:
 * `min`/`max` – optional range used to calculate the percentage
 * `width` – arc thickness (for `arc1`..`arc3` only)
 * `color` – hex color (e.g. `"#00ff00"`)
+* `animation` – `true`/`false` to enable or disable animation or a number
+  specifying the animation duration in milliseconds (default `1000`)
 
 Configure WiFi and MQTT parameters in `include/config.h` or create `config_private.h` with overriding values.
 If your MQTT broker requires authentication, define `CONFIG_MQTT_USER` and `CONFIG_MQTT_PASS` in `config_private.h`.

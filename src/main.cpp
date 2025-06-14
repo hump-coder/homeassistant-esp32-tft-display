@@ -55,10 +55,14 @@ PubSubClient mqtt(wifiClient);
 
 static const int CENTER = 120;
 static const int RADIUS = 120;
+static bool animationEnabled = true;
+static unsigned long animationDuration = 1000; // ms
 
 struct Arc {
   float value = 0.0f;
   float display = 0.0f;
+  float start = 0.0f;
+  unsigned long startTime = 0;
   float min = 0.0f;
   float max = 100.0f;
   int width = 8;
@@ -68,6 +72,8 @@ struct Arc {
 struct Dial {
   float value = 0.0f;
   float display = 0.0f;
+  float start = 0.0f;
+  unsigned long startTime = 0;
   float min = 0.0f;
   float max = 100.0f;
   uint16_t color = TFT_RED;
@@ -75,6 +81,18 @@ struct Dial {
 
 static Arc arcs[3];
 static Dial dial;
+
+static void setArcValue(int idx, float v) {
+  arcs[idx].start = arcs[idx].display;
+  arcs[idx].startTime = millis();
+  arcs[idx].value = v;
+}
+
+static void setDialValue(float v) {
+  dial.start = dial.display;
+  dial.startTime = millis();
+  dial.value = v;
+}
 
 static uint16_t parseColor(const String& str) {
   String s = str;
@@ -88,29 +106,59 @@ static uint16_t parseColor(const String& str) {
 }
 
 static void handleArc(int idx, JsonVariantConst obj) {
-  if (obj["value"].is<float>()) arcs[idx].value = obj["value"].as<float>();
+  if (obj["value"].is<float>()) setArcValue(idx, obj["value"].as<float>());
   if (obj["min"].is<float>()) arcs[idx].min = obj["min"].as<float>();
   if (obj["max"].is<float>()) arcs[idx].max = obj["max"].as<float>();
   if (obj["width"].is<int>()) arcs[idx].width = obj["width"].as<int>();
   if (obj.containsKey("color")) arcs[idx].color = parseColor(obj["color"].as<String>());
+  if (obj.containsKey("animation")) {
+    if (obj["animation"].is<bool>()) {
+      animationEnabled = obj["animation"].as<bool>();
+    } else if (obj["animation"].is<int>()) {
+      animationDuration = obj["animation"].as<int>();
+      animationEnabled = animationDuration > 0;
+    }
+  }
 }
 
 static void handleDial(JsonVariantConst obj) {
-  if (obj["value"].is<float>()) dial.value = obj["value"].as<float>();
+  if (obj["value"].is<float>()) setDialValue(obj["value"].as<float>());
   if (obj["min"].is<float>()) dial.min = obj["min"].as<float>();
   if (obj["max"].is<float>()) dial.max = obj["max"].as<float>();
   if (obj.containsKey("color")) dial.color = parseColor(obj["color"].as<String>());
+  if (obj.containsKey("animation")) {
+    if (obj["animation"].is<bool>()) {
+      animationEnabled = obj["animation"].as<bool>();
+    } else if (obj["animation"].is<int>()) {
+      animationDuration = obj["animation"].as<int>();
+      animationEnabled = animationDuration > 0;
+    }
+  }
 }
 
 static void animateValues() {
-  for (int i = 0; i < 3; ++i) {
-    float diff = arcs[i].value - arcs[i].display;
-    arcs[i].display += diff * 0.1f;
-    if (fabsf(diff) < 0.01f) arcs[i].display = arcs[i].value;
+  unsigned long now = millis();
+  if (!animationEnabled || animationDuration == 0) {
+    for (int i = 0; i < 3; ++i) {
+      arcs[i].display = arcs[i].value;
+    }
+    dial.display = dial.value;
+    return;
   }
-  float d = dial.value - dial.display;
-  dial.display += d * 0.1f;
-  if (fabsf(d) < 0.01f) dial.display = dial.value;
+  for (int i = 0; i < 3; ++i) {
+    float progress = (float)(now - arcs[i].startTime) / animationDuration;
+    if (progress >= 1.0f) {
+      arcs[i].display = arcs[i].value;
+    } else {
+      arcs[i].display = arcs[i].start + (arcs[i].value - arcs[i].start) * progress;
+    }
+  }
+  float progress = (float)(now - dial.startTime) / animationDuration;
+  if (progress >= 1.0f) {
+    dial.display = dial.value;
+  } else {
+    dial.display = dial.start + (dial.value - dial.start) * progress;
+  }
 }
 
 static void drawArcs() {
@@ -236,13 +284,13 @@ static void mqttCallback(char* topic, byte* payload, unsigned int length) {
   } else {
     float f = val.toFloat();
     if (strcmp(topic, "ha_display/arc1") == 0) {
-      arcs[0].value = f;
+      setArcValue(0, f);
     } else if (strcmp(topic, "ha_display/arc2") == 0) {
-      arcs[1].value = f;
+      setArcValue(1, f);
     } else if (strcmp(topic, "ha_display/arc3") == 0) {
-      arcs[2].value = f;
+      setArcValue(2, f);
     } else if (strcmp(topic, "ha_display/dial") == 0) {
-      dial.value = f;
+      setDialValue(f);
     }
   }
 }
