@@ -18,5 +18,19 @@ ha_display/dial
 ha_display/temperature (published by the device)
 ```
 
+Payloads for `arc1`, `arc2`, `arc3` and `dial` can be either a simple numeric
+value or a JSON object that allows additional configuration. Example:
+
+```json
+{ "value": 75, "min": 0, "max": 150, "width": 10, "color": "#ff0000" }
+```
+
+Supported fields:
+
+* `value` – current measurement
+* `min`/`max` – optional range used to calculate the percentage
+* `width` – arc thickness (for `arc1`..`arc3` only)
+* `color` – hex color (e.g. `"#00ff00"`)
+
 Configure WiFi and MQTT parameters in `include/config.h` or create `config_private.h` with overriding values.
 If your MQTT broker requires authentication, define `CONFIG_MQTT_USER` and `CONFIG_MQTT_PASS` in `config_private.h`.
