@@ -191,6 +191,9 @@ static void mqttCallback(char* topic, byte* payload, unsigned int length) {
   StaticJsonDocument<256> doc;
   DeserializationError err = deserializeJson(doc, payload, length);
   if (!err) {
+    Serial.print("Parsed JSON: ");
+    serializeJson(doc, Serial);
+    Serial.println();
     if (strcmp(topic, "ha_display/arc1") == 0) {
       handleArc(0, doc);
     } else if (strcmp(topic, "ha_display/arc2") == 0) {
