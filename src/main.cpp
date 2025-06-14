@@ -143,7 +143,13 @@ static void mqttConnect() {
   while (!mqtt.connected()) {
     String clientId = "esp32-display-" + String(random(0xffff), HEX);
     Serial.print("Connecting to MQTT...");
-    if (mqtt.connect(clientId.c_str())) {
+    bool connected = false;
+    if (strlen(CONFIG_MQTT_USER) > 0) {
+      connected = mqtt.connect(clientId.c_str(), CONFIG_MQTT_USER, CONFIG_MQTT_PASS);
+    } else {
+      connected = mqtt.connect(clientId.c_str());
+    }
+    if (connected) {
       Serial.println("connected");
       mqtt.subscribe("ha_display/arc1");
       mqtt.subscribe("ha_display/arc2");

@@ -23,6 +23,14 @@
 #define CONFIG_MQTT_PORT 1883
 #endif
 
+#ifndef CONFIG_MQTT_USER
+#define CONFIG_MQTT_USER ""
+#endif
+
+#ifndef CONFIG_MQTT_PASS
+#define CONFIG_MQTT_PASS ""
+#endif
+
 // Pin assignments for the Wemos LOLIN S2 mini board
 // SCL   GPIO7  - grey
 // SDA   GPIO11 - purple
